@@ -29,7 +29,19 @@ def proses_satu_saham(ticker):
         elif curr['Volume'] > curr['Vol_MA20']: skor += 10
         
         if skor >= 60:
-            return {"ticker": ticker, "skor": skor, "harga": float(curr['Close']), "vwap": float(curr['VWAP'])}
+            # Ekstraksi indikator lanjutan untuk mesin pemilah strategi per sesi
+            high_today = float(df_clean[df_clean['Date'] == curr['Date']]['High'].max())
+            vol_spike = float(curr['Volume'] / curr['Vol_MA20']) if curr['Vol_MA20'] > 0 else 1.0
+            
+            return {
+                "ticker": ticker, 
+                "skor": skor, 
+                "harga": float(curr['Close']), 
+                "vwap": float(curr['VWAP']),
+                "rsi": float(curr['RSI']),
+                "vol_spike": vol_spike,
+                "high_today": high_today
+            }
     except Exception:
         pass
     return None
