@@ -53,6 +53,54 @@ else:
     st.info("Scanner Kosong: Belum ada saham yang memenuhi kriteria.")
 st.markdown("---")
 
+# --- 7.5. UI MAIN: REKOMENDASI STRATEGI SESI (HIGH SENSITIVITY) ---
+if top_3:
+    st.markdown("### 🧭 Peta Taktis & Eksekusi Sesi Ini")
+    
+    if "Pagi" in status_waktu:
+        # LOGIKA SENSITIF PAGI: Berburu volatilitas & saham dengan akumulasi volume terbesar harian
+        kandidat = max(top_3, key=lambda x: x['vol_spike'])
+        
+        st.success("🔥 **STRATEGI: Momentum Scalping (Hit & Run)**")
+        st.write("**Kondisi Market:** Pasar baru buka. Uang pintar sedang mencari pijakan awal. Kita ikut arus momentum terkuat.")
+        cols_rek1, cols_rek2 = st.columns([1, 2])
+        with cols_rek1:
+            st.metric("🎯 Stockpick Sesi Ini", kandidat['ticker'], f"Vol Spike: {kandidat['vol_spike']:.1f}x dari Rata-rata")
+        with cols_rek2:
+            st.write(f"**💡 Kenapa {kandidat['ticker']}?** Algoritma mendeteksi anomali volume ({kandidat['vol_spike']:.1f} kali lipat dari MA20) tepat di sesi pagi. Ini sinyal jelas bandar sedang agresif HAKA.")
+            st.write(f"**⚡ Cara Eksekusi:** *Buy on Momentum* di harga Rp {kandidat['harga']:,.0f}. Gunakan porsi 30%. Siapkan jari di tombol *Sell* untuk taking profit cepat (1-3%). Jika harga mendadak turun di bawah Rp {kandidat['vwap']:,.0f} (VWAP), langsung Cut Loss!")
+
+    elif "Siang" in status_waktu:
+        # LOGIKA SENSITIF SIANG: Cari pullback sehat (RSI < 60) dan posisi terdekat dengan garis VWAP bandar
+        kandidat_valid = [x for x in top_3 if x['rsi'] < 60]
+        kandidat = min(kandidat_valid, key=lambda x: abs(x['harga'] - x['vwap'])) if kandidat_valid else min(top_3, key=lambda x: abs(x['harga'] - x['vwap']))
+        jarak_vwap = (abs(kandidat['harga'] - kandidat['vwap']) / kandidat['vwap']) * 100
+        
+        st.warning("⚠️ **STRATEGI: Buy on Weakness (Jaring Bawah / Cicil VWAP)**")
+        st.write("**Kondisi Market:** Volume bursa menipis. Harga rawan *false breakout*. Fokus pada saham yang sedang *pullback* (koreksi sehat) tanpa volume buangan besar.")
+        cols_rek1, cols_rek2 = st.columns([1, 2])
+        with cols_rek1:
+            st.metric("🎯 Stockpick Sesi Ini", kandidat['ticker'], f"Jarak VWAP: {jarak_vwap:.1f}% | RSI: {kandidat['rsi']:.0f}")
+        with cols_rek2:
+            st.write(f"**💡 Kenapa {kandidat['ticker']}?** RSI sudah *cooling down* ({kandidat['rsi']:.0f}) menandakan tekanan jual ritel mulai habis. Harganya (Rp {kandidat['harga']:,.0f}) sangat presisi merapat ke area Ekuilibrium Bandar (VWAP: Rp {kandidat['vwap']:,.0f}).")
+            st.write(f"**⚡ Cara Eksekusi:** Antre beli (Pasang *Bid*) di sekitar garis VWAP (Rp {kandidat['vwap']:,.0f}). Jangan dikejar ke atas. Risiko *downside* di area ini sangat kecil.")
+
+    else:
+        # LOGIKA SENSITIF SORE (BSJP): Memilih saham yang penutupannya kokoh bertahan di pucuk harian (Close at High)
+        kandidat = min(top_3, key=lambda x: (x['high_today'] - x['harga']) / x['high_today'] if x['high_today'] > 0 else 1)
+        jarak_pucuk = ((kandidat['high_today'] - kandidat['harga']) / kandidat['high_today']) * 100 if kandidat['high_today'] > 0 else 0
+        
+        st.info("📊 **STRATEGI: Beli Sore Jual Pagi (BSJP) & Pre-Closing Mark-up**")
+        st.write("**Kondisi Market:** Persiapan *window dressing* harian institusi. Kita mencari saham yang diakumulasi sejak pagi dan tidak ada guyuran distribusi menjelang tutup.")
+        cols_rek1, cols_rek2 = st.columns([1, 2])
+        with cols_rek1:
+            st.metric("🎯 Stockpick Sesi Ini", kandidat['ticker'], f"Kedekatan High: -{jarak_pucuk:.1f}%")
+        with cols_rek2:
+            st.write(f"**💡 Kenapa {kandidat['ticker']}?** Terdeteksi anomali! Harga saat ini (Rp {kandidat['harga']:,.0f}) dijaga sangat ketat oleh *market maker*, nyaris menyentuh harga tertinggi hariannya (Rp {kandidat['high_today']:,.0f}). Tidak ada *profit taking* berarti sore ini.")
+            st.write(f"**⚡ Cara Eksekusi:** Beli di rentang jam 15:45 - 15:55 WIB. Tahan (*Hold*). Jual esok hari saat sesi *pre-opening* atau 10 menit pertama jam perdagangan saat *bid* mulai ditebalkan.")
+
+    st.markdown("---")
+
 # --- UI MAIN: DEEP DIVE ANALISIS ---
 st.subheader(f"🔎 Deep Dive Analisis: {ticker_utama}")
 
