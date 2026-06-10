@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 # --- IMPORT MODULES KUSTOM ---
 from utils import sesuaikan_fraksi_bei, hitung_batas_ara_arb, cek_waktu_trading
 from indicators import calculate_indicators, calculate_daily_atr
-from data_fetcher import ambil_harga_realtime_google, get_market_data, ambil_berita_indonesia
+from data_fetcher import ambil_harga_realtime, get_market_data, ambil_berita_indonesia
 from scanner import scan_top_saham
 
 # --- KONFIGURASI HALAMAN ---
@@ -16,6 +16,7 @@ st.set_page_config(page_title="Trading Plan Pro V8.2", layout="wide", page_icon=
 with st.sidebar:
     st.markdown("### ⚙️ Parameter Trading (Real Market)")
     ticker_utama = st.text_input("Analisis Saham Spesifik:", "PSAB").upper()
+    harga_manual = st.number_input("Bypass Harga Real-Time (Opsional):", value=0, step=1, help="Isi dengan harga live dari Stockbit/Trimegah jika API delay.")
     modal_trading = st.number_input("Total Portofolio (Rp):", value=1000000, step=1000000)
     risiko_persen = st.slider("Risiko per Trade (%):", 0.1, 5.0, 2.0) / 100
     fee_broker = st.number_input("Total Fee Jual+Beli (%):", value=0.4, step=0.1) / 100
@@ -53,14 +54,12 @@ else:
     st.info("Scanner Kosong: Belum ada saham yang memenuhi kriteria.")
 st.markdown("---")
 
-# --- 7.5. UI MAIN: REKOMENDASI STRATEGI SESI (HIGH SENSITIVITY) ---
+# --- UI MAIN: REKOMENDASI STRATEGI SESI (HIGH SENSITIVITY) ---
 if top_3:
     st.markdown("### 🧭 Peta Taktis & Eksekusi Sesi Ini")
     
     if "Pagi" in status_waktu:
-        # LOGIKA SENSITIF PAGI: Berburu volatilitas & saham dengan akumulasi volume terbesar harian
         kandidat = max(top_3, key=lambda x: x['vol_spike'])
-        
         st.success("🔥 **STRATEGI: Momentum Scalping (Hit & Run)**")
         st.write("**Kondisi Market:** Pasar baru buka. Uang pintar sedang mencari pijakan awal. Kita ikut arus momentum terkuat.")
         cols_rek1, cols_rek2 = st.columns([1, 2])
@@ -71,7 +70,6 @@ if top_3:
             st.write(f"**⚡ Cara Eksekusi:** *Buy on Momentum* di harga Rp {kandidat['harga']:,.0f}. Gunakan porsi 30%. Siapkan jari di tombol *Sell* untuk taking profit cepat (1-3%). Jika harga mendadak turun di bawah Rp {kandidat['vwap']:,.0f} (VWAP), langsung Cut Loss!")
 
     elif "Siang" in status_waktu:
-        # LOGIKA SENSITIF SIANG: Cari pullback sehat (RSI < 60) dan posisi terdekat dengan garis VWAP bandar
         kandidat_valid = [x for x in top_3 if x['rsi'] < 60]
         kandidat = min(kandidat_valid, key=lambda x: abs(x['harga'] - x['vwap'])) if kandidat_valid else min(top_3, key=lambda x: abs(x['harga'] - x['vwap']))
         jarak_vwap = (abs(kandidat['harga'] - kandidat['vwap']) / kandidat['vwap']) * 100
@@ -86,7 +84,6 @@ if top_3:
             st.write(f"**⚡ Cara Eksekusi:** Antre beli (Pasang *Bid*) di sekitar garis VWAP (Rp {kandidat['vwap']:,.0f}). Jangan dikejar ke atas. Risiko *downside* di area ini sangat kecil.")
 
     else:
-        # LOGIKA SENSITIF SORE (BSJP): Memilih saham yang penutupannya kokoh bertahan di pucuk harian (Close at High)
         kandidat = min(top_3, key=lambda x: (x['high_today'] - x['harga']) / x['high_today'] if x['high_today'] > 0 else 1)
         jarak_pucuk = ((kandidat['high_today'] - kandidat['harga']) / kandidat['high_today']) * 100 if kandidat['high_today'] > 0 else 0
         
@@ -108,13 +105,17 @@ df_5m, df_1d = get_market_data(ticker_utama)
 
 if not df_5m.empty and not df_1d.empty:
     
-    # Injeksi Real-time Google Finance
-    harga_realtime_deep = ambil_harga_realtime_google(ticker_utama)
-    if harga_realtime_deep and harga_realtime_deep > 0:
-        df_5m.loc[df_5m.index[-1], 'Close'] = harga_realtime_deep
-        st.success(f"⚡ **Real-time Engine Active:** Terhubung ke Google Finance (Harga Live: Rp {harga_realtime_deep:,.0f})")
+    # Injeksi Real-time Engine & Manual Override
+    if harga_manual > 0:
+        df_5m.loc[df_5m.index[-1], 'Close'] = float(harga_manual)
+        st.success(f"⚡ **Manual Override Active:** Menggunakan harga input pengguna (Rp {harga_manual:,.0f})")
     else:
-        st.warning("⚠️ **Mode Delay Active:** Gagal sinkronisasi Google. Menggunakan data yfinance (Delay 15 Menit).")
+        harga_realtime_deep = ambil_harga_realtime(ticker_utama)
+        if harga_realtime_deep and harga_realtime_deep > 0:
+            df_5m.loc[df_5m.index[-1], 'Close'] = harga_realtime_deep
+            st.success(f"⚡ **Auto Real-time Active:** Tersinkronisasi dengan Live Market API (Rp {harga_realtime_deep:,.0f})")
+        else:
+            st.warning("⚠️ **Mode Delay Active:** Gagal sinkronisasi API. Menggunakan data yfinance (Delay 15 Menit).")
         
     df_5m = calculate_indicators(df_5m)
     df_clean = df_5m.dropna(subset=['VWAP', 'EMA20', 'Turnover_MA20'])
@@ -276,14 +277,14 @@ if not df_5m.empty and not df_1d.empty:
                * **Siang (10:00 - 14:00 WIB):** Rawan *sideways* dan *false breakout*. Disarankan untuk menahan diri (*wait & see*).
                * **Sore (14:00 - 16:00 WIB):** Waktu ideal untuk mencari sinyal akumulasi saham guna strategi Beli Sore Jual Pagi (BSJP).
             3. **Pantau Scanner (Top 3):** Sistem akan menyaring puluhan saham dari Daftar Pantauan untuk memunculkan emiten yang volume intraday-nya sedang diakumulasi oleh uang pintar.
-            4. **Deep Dive Emiten:** Ketik kode saham incaran dari daftar *Top 3* ke kolom **Analisis Saham Spesifik** di sidebar kiri untuk membedah target harga terperinci.
+            4. **Deep Dive Emiten:** Ketik kode saham incaran dari daftar *Top 3* ke kolom **Analisis Saham Spesifik** di sidebar kiri untuk membedah target harga terperinci. Gunakan *Bypass Harga Real-Time* jika harga telat (*delay*).
             5. **Eksekusi Order (Aplikasi Sekuritas):** Patuhi **Skenario Entry Anti-Guyur** (disarankan mecicil 2 titik) dan pastikan jumlah lot yang Anda input di sekuritas tidak melebihi rekomendasi **Safe Lot Size**.
 
             ---
             ### ⚠️ Rules Sistem & Keamanan Portofolio
-            * **Keamanan Anti-Ban (Teknis):** Sistem menggunakan eksekusi asinkronus `yfinance` untuk *Scanner* agar server terhindar dari pemblokiran otomatis, sementara bagian analisa mendalam diinjeksi dengan harga presisi *real-time* langsung dari *Google Finance*.
+            * **Keamanan Anti-Ban (Teknis):** Sistem menggunakan eksekusi asinkronus `yfinance` untuk *Scanner* agar server terhindar dari pemblokiran otomatis, sementara bagian analisa mendalam diinjeksi dengan harga presisi *real-time* langsung dari *Google Finance* atau input manual (*Override*).
             * **Disiplin Cut Loss:** Eksekusi Cut Loss di aplikasi Anda tanpa kompromi bila harga penutupan menyentuh angka **Stop Loss Strict**. Jangan pernah melakukan *averaging down* (menangkap pisau jatuh) saat tren harian berstatus *Downtrend*.
-            * **Validasi Likuiditas Manual:** Meskipun sistem sudah menyaring saham dengan Turnover minimal Rp 100 Juta, Anda **WAJIB** mengecek ketebalan lot *Bid-Offer* dan *Running Trade* secara langsung di aplikasi sekuritas sebelum menekan tombol Hajar Kanan (HAKA).
+            * **Validasi Likuiditas Manual:** Meskipun sistem sudah menyaring saham dengan Turnover minimal Rp 100 Juta, Anda **WAJIB** mengecek ketebalan lot *Bid-Offer* dan *Running Trade* secara langsung di aplikasi sekuritas (seperti Stockbit/Trimegah) sebelum menekan tombol Hajar Kanan (HAKA).
             """)
 else:
     st.error("Gagal menarik data. Pastikan format ticker benar (contoh: BBCA) dan koneksi server aktif.")
