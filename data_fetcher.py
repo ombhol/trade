@@ -7,15 +7,21 @@ from bs4 import BeautifulSoup
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
+import random
 
-def ambil_harga_realtime_google(ticker):
-    """Mengambil harga saham BEI real-time dari Google Finance."""
+def ambil_harga_realtime(ticker):
+    """Mengambil harga saham BEI real-time dengan Multi-Layer Fallback."""
+    
+    # LAYER 1: Google Finance Scraper dengan Rotasi User-Agent
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0'
+    ]
     url = f"https://www.google.com/finance/quote/{ticker}:IDX"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
+    
     try:
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(url, headers={'User-Agent': random.choice(user_agents)}, timeout=5)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
             elemen_harga = soup.find('div', {'class': 'ymr60b'})
@@ -24,6 +30,16 @@ def ambil_harga_realtime_google(ticker):
                 return float(harga_teks)
     except Exception:
         pass
+        
+    # LAYER 2: Fallback ke YFinance Live API (fast_info) jika Google HTTP 403
+    try:
+        saham = yf.Ticker(f"{ticker}.JK")
+        harga_yf = saham.fast_info['lastPrice']
+        if harga_yf and harga_yf > 0:
+            return float(harga_yf)
+    except Exception:
+        pass
+        
     return None
 
 def clean_yfinance_columns(df):
