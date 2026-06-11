@@ -266,4 +266,49 @@ if not df_5m.empty and not df_1d.empty:
                 if turnover_5m_rata_rata < 100000000:
                     st.error(f"❌ **Saham Ilusi (Low Turnover):** Omset 5 mnt hanya Rp {turnover_5m_rata_rata/1000000:,.1f} Jt. Rawan manipulasi Bid/Offer!")
                 elif tren_harian == "DOWNTREND 🔴" and skor_utama >= 60:
-                    st.warning("⚠️ **REBOUND PLAY:** Spekulatif
+                    st.warning("⚠️ **REBOUND PLAY:** Spekulatif pantulan cepat. Wajib Hit & Run!")
+                elif tren_harian == "DOWNTREND 🔴": 
+                    st.error("❌ **Trend Hancur:** Market membuang emiten ini. Jangan menahan pisau jatuh.")
+                elif persen_kenaikan > 8.0: 
+                    st.error("❌ **Ekstrem FOMO:** Hindari masuk di zona pucuk harian.")
+                else: 
+                    st.success("🚀 **Clear for Takeoff:** Momentum dan struktur uptrend valid.")
+                    
+            st.markdown("---")
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(x=df_5m.index, open=df_5m['Open'], high=df_5m['High'], low=df_5m['Low'], close=df_5m['Close'], name="Harga"))
+            fig.add_trace(go.Scatter(x=df_5m.index, y=df_5m['VWAP'], line=dict(color='#3b82f6', width=2), name='VWAP'))
+            fig.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False, margin=dict(t=10, b=10))
+            st.plotly_chart(fig, use_container_width=True)
+
+        with tab2:
+            st.subheader(f"📰 Katalis Media: {st.session_state.ticker_utama}")
+            berita_lokal = ambil_berita_indonesia(st.session_state.ticker_utama)
+            if berita_lokal:
+                for item in berita_lokal:
+                    st.markdown(f"🔹 **[{item['title']}]({item['link']})**")
+                    st.caption(f"🗞️ Sumber: {item['source']} | 🕒 {item['date']}")
+            else:
+                st.info("Market hening. Tidak ada sentimen berita penggerak.")
+                
+        with tab3:
+            st.subheader("📖 Panduan Penggunaan & SOP Day Trader BEI")
+            
+            st.markdown("""
+            ### 🎯 5 Langkah Eksekusi Taktis
+            1. **Atur Amunisi (Sidebar Kiri):** Masukkan Total Modal yang siap di-tradingkan dan atur batas persentase *Cut Loss* (Risiko). Biarkan sistem menghitung batas lot maksimum yang aman untuk Anda beli.
+            2. **Perhatikan Sesi Jam (Indikator Atas):** * **Pagi (09:00 - 10:00 WIB):** Sesi paling agresif. Volatilitas sangat tinggi, cocok untuk eksekusi kilat.
+               * **Siang (10:00 - 14:00 WIB):** Rawan *sideways* dan *false breakout*. Disarankan untuk menahan diri (*wait & see*).
+               * **Sore (14:00 - 16:00 WIB):** Waktu ideal untuk mencari sinyal akumulasi saham guna strategi Beli Sore Jual Pagi (BSJP).
+            3. **Pantau Scanner (Top 3):** Sistem akan menyaring puluhan saham dari Daftar Pantauan untuk memunculkan emiten yang volume intraday-nya sedang diakumulasi oleh uang pintar.
+            4. **Deep Dive Emiten:** Ketik kode saham incaran dari daftar *Top 3* ke kolom **Analisis Saham Spesifik** di sidebar kiri untuk membedah target harga terperinci. Gunakan *Bypass Harga Real-Time* jika harga telat (*delay*).
+            5. **Eksekusi Order (Aplikasi Sekuritas):** Patuhi **Skenario Entry Anti-Guyur** (disarankan mecicil 2 titik) dan pastikan jumlah lot yang Anda input di sekuritas tidak melebihi rekomendasi **Safe Lot Size**.
+
+            ---
+            ### ⚠️ Rules Sistem & Keamanan Portofolio
+            * **Keamanan Anti-Ban (Teknis):** Sistem menggunakan eksekusi asinkronus `yfinance` untuk *Scanner* agar server terhindar dari pemblokiran otomatis, sementara bagian analisa mendalam diinjeksi dengan harga presisi *real-time* langsung dari *Google Finance* atau input manual (*Override*).
+            * **Disiplin Cut Loss:** Eksekusi Cut Loss di aplikasi Anda tanpa kompromi bila harga penutupan menyentuh angka **Stop Loss Strict**. Jangan pernah melakukan *averaging down* (menangkap pisau jatuh) saat tren harian berstatus *Downtrend*.
+            * **Validasi Likuiditas Manual:** Meskipun sistem sudah menyaring saham dengan Turnover minimal Rp 100 Juta, Anda **WAJIB** mengecek ketebalan lot *Bid-Offer* dan *Running Trade* secara langsung di aplikasi sekuritas (seperti Stockbit/Trimegah) sebelum menekan tombol Hajar Kanan (HAKA).
+            """)
+else:
+    st.error("Gagal menarik data. Pastikan format ticker benar (contoh: BBCA) dan koneksi server aktif.")
