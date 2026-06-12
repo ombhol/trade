@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 # --- IMPORT MODULES KUSTOM ---
 from utils import sesuaikan_fraksi_bei, hitung_batas_ara_arb, cek_waktu_trading
 from indicators import calculate_indicators, calculate_daily_atr
+from scanner import scan_top_saham
+from saham_dividen_diskon import scan_saham_dividen
 from data_fetcher import ambil_harga_realtime, get_market_data, ambil_berita_indonesia
 from scanner import scan_top_saham
 
@@ -216,7 +218,7 @@ if not df_5m.empty and not df_1d.empty:
             st.metric("Safe Lot Size", f"{total_lot} Lot", alasan_lot)
             st.metric("Skor Saham", f"{skor_utama} / 100")
         
-        tab1, tab2, tab3 = st.tabs(["📊 Eksekusi Order & Net PnL", "📰 Sentimen & Berita", "📖 Rules & Panduan"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 Eksekusi Order & Net PnL", "📰 Sentimen & Berita", "📖 Rules & Panduan", "💰 Saham Deviden Diskon"])
         
         with tab1:
             col_plan, col_rules = st.columns([1.5, 1])
@@ -310,5 +312,32 @@ if not df_5m.empty and not df_1d.empty:
             * **Disiplin Cut Loss:** Eksekusi Cut Loss di aplikasi Anda tanpa kompromi bila harga penutupan menyentuh angka **Stop Loss Strict**. Jangan pernah melakukan *averaging down* (menangkap pisau jatuh) saat tren harian berstatus *Downtrend*.
             * **Validasi Likuiditas Manual:** Meskipun sistem sudah menyaring saham dengan Turnover minimal Rp 100 Juta, Anda **WAJIB** mengecek ketebalan lot *Bid-Offer* dan *Running Trade* secara langsung di aplikasi sekuritas (seperti Stockbit/Trimegah) sebelum menekan tombol Hajar Kanan (HAKA).
             """)
+        with tab4:
+            st.subheader("💰 Radar Saham Deviden Diskon (Bottom Fishing)")
+            st.write("Mendeteksi saham dari Daftar Pantauan yang harganya anjlok >5% dalam 1 Minggu Terakhir.")
+            
+            with st.spinner("Memindai saham diskon di market..."):
+                # Menggunakan daftar_pantauan yang sudah ada di sidebar Anda
+                top_3_diskon = scan_saham_dividen(daftar_pantauan)
+                
+            if top_3_diskon:
+                st.success("✅ **Top 3 Saham Diskon Ditemukan!**")
+                cols_diskon = st.columns(3)
+                
+                for i, data in enumerate(top_3_diskon):
+                    with cols_diskon[i]:
+                        st.markdown(f"""
+                        <div style="background-color: #2b1f1f; padding: 20px; border-radius: 12px; border-left: 5px solid #ef4444;">
+                            <h2 style="margin:0; color: #f87171;">{data['ticker']}</h2>
+                            <h1 style="margin: 5px 0; color: white;">{data['penurunan_persen']:.2f}%</h1>
+                            <p style="margin:0; color: #e5e7eb;">Harga Skrg: <b>Rp {data['harga_sekarang']:,.0f}</b></p>
+                            <p style="margin:0; color: #9ca3af;"><del>Hrg 1 Minggu Lalu: Rp {data['harga_minggu_lalu']:,.0f}</del></p>
+                            <hr style="border-color: #4b5563; margin: 10px 0;">
+                            <p style="margin:0; color: #10b981;">🔼 Resistan: Rp {data['resistan']:,.0f}</p>
+                            <p style="margin:0; color: #ef4444;">🔽 Support: Rp {data['support']:,.0f}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+            else:
+                st.info("⚠️ Saat ini belum ada saham di daftar pantauan yang turun lebih dari 5% dalam 1 minggu terakhir.")
 else:
     st.error("Gagal menarik data. Pastikan format ticker benar (contoh: BBCA) dan koneksi server aktif.")
