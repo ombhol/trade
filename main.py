@@ -331,7 +331,7 @@ if not df_5m.empty and not df_1d.empty:
                             <h2 style="margin:0; color: #f87171;">{data['ticker']}</h2>
                             <h1 style="margin: 5px 0; color: white;">{data['penurunan_persen']:.2f}%</h1>
                             <p style="margin:0; color: #e5e7eb;">Harga Skrg: <b>Rp {data['harga_sekarang']:,.0f}</b></p>
-                            <p style="margin:0; color: #9ca3af;"><del>Hrg 1 Minggu Lalu: Rp {data['harga_minggu_lalu']:,.0f}</del></p>
+                            <p style="margin:0; color: #9ca3af;"><del>{data.get('label_referensi', 'Harga Referensi')}: Rp {data['harga_minggu_lalu']:,.0f}</del></p>
                             <hr style="border-color: #4b5563; margin: 10px 0;">
                             <p style="margin:0; color: #10b981;">🔼 Resistan: Rp {data['resistan']:,.0f}</p>
                             <p style="margin:0; color: #ef4444;">🔽 Support: Rp {data['support']:,.0f}</p>
