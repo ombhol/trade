@@ -9,7 +9,6 @@ from indicators import calculate_indicators, calculate_daily_atr
 from scanner import scan_top_saham
 from saham_dividen_diskon import scan_saham_dividen
 from data_fetcher import ambil_harga_realtime, get_market_data, ambil_berita_indonesia
-from scanner import scan_top_saham
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Trading Plan Pro V8.2", layout="wide", page_icon="🦅")
