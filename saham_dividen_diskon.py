@@ -75,5 +75,5 @@ def scan_saham_dividen(watchlist):
     # 7. Urutkan mulai dari yang paling hancur/minus terdalam
     hasil_sorted = sorted(hasil, key=lambda x: x['penurunan_persen'])
     
-    # [PERBAIKAN]: Tampilkan TOP 5 agar MPMX tidak tertutup saham lain
-    return hasil_sorted[:5]
+    # [PERBAIKAN]: Tampilkan TOP 10 
+    return hasil_sorted[:10]
