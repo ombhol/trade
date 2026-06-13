@@ -311,19 +311,22 @@ if not df_5m.empty and not df_1d.empty:
             * **Disiplin Cut Loss:** Eksekusi Cut Loss di aplikasi Anda tanpa kompromi bila harga penutupan menyentuh angka **Stop Loss Strict**. Jangan pernah melakukan *averaging down* (menangkap pisau jatuh) saat tren harian berstatus *Downtrend*.
             * **Validasi Likuiditas Manual:** Meskipun sistem sudah menyaring saham dengan Turnover minimal Rp 100 Juta, Anda **WAJIB** mengecek ketebalan lot *Bid-Offer* dan *Running Trade* secara langsung di aplikasi sekuritas (seperti Stockbit/Trimegah) sebelum menekan tombol Hajar Kanan (HAKA).
             """)
-        with tab4:
+with tab4:
             st.subheader("💰 Radar Saham Deviden Diskon (Bottom Fishing)")
             st.write("Mendeteksi saham dari Daftar Pantauan yang harganya anjlok >5% dalam 1 Minggu Terakhir.")
             
             with st.spinner("Memindai saham diskon di market..."):
-                # Menggunakan daftar_pantauan yang sudah ada di sidebar Anda
-                top_3_diskon = scan_saham_dividen(daftar_pantauan)
+                # Menggunakan daftar_pantauan yang sudah ada di sidebar
+                top_5_diskon = scan_saham_dividen(daftar_pantauan) # Nama variabel disesuaikan
                 
-            if top_3_diskon:
-                st.success("✅ **Top 3 Saham Diskon Ditemukan!**")
-                cols_diskon = st.columns(3)
+            if top_5_diskon:
+                # Menampilkan teks sukses yang dinamis sesuai jumlah saham yang ditemukan
+                st.success(f"✅ **Top {len(top_5_diskon)} Saham Diskon Ditemukan!**")
                 
-                for i, data in enumerate(top_3_diskon):
+                # PERBAIKAN: Membuat jumlah kolom dinamis sesuai jumlah data (misal: 4 data = 4 kolom)
+                cols_diskon = st.columns(len(top_5_diskon))
+                
+                for i, data in enumerate(top_5_diskon):
                     with cols_diskon[i]:
                         st.markdown(f"""
                         <div style="background-color: #2b1f1f; padding: 20px; border-radius: 12px; border-left: 5px solid #ef4444;">
