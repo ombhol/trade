@@ -10,6 +10,12 @@ from scanner import scan_top_saham
 from saham_dividen_diskon import scan_saham_dividen
 from data_fetcher import ambil_harga_realtime, get_market_data, ambil_berita_indonesia
 
+# --- IMPORT MODUL TAB BARU ---
+from tab_eksekusi import render_tab_eksekusi
+from tab_sentimen import render_tab_sentimen
+from tab_rules import render_tab_rules
+from tab_diskon import render_tab_diskon
+
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Trading Plan Pro V8.2", layout="wide", page_icon="🦅")
 
@@ -220,129 +226,22 @@ if not df_5m.empty and not df_1d.empty:
         tab1, tab2, tab3, tab4 = st.tabs(["📊 Eksekusi Order & Net PnL", "📰 Sentimen & Berita", "📖 Rules & Panduan", "💰 Saham Deviden Diskon"])
         
         with tab1:
-            col_plan, col_rules = st.columns([1.5, 1])
-            entry_cicil_1 = sesuaikan_fraksi_bei(entry)
-            entry_cicil_2 = sesuaikan_fraksi_bei(vwap_val) if vwap_val > 0 else entry
-            if entry_cicil_2 >= entry_cicil_1: entry_cicil_2 = sesuaikan_fraksi_bei(float(curr_5m['EMA20']))
-
-            with col_plan:
-                st.markdown("### 🎯 Skenario Entry Anti-Guyur")
-                if persen_kenaikan > 5.5 or jarak_vwap_persen > 2.5:
-                    st.warning(f"🚨 **RAWAN GUYURAN:** Harga sudah melesat jauh dari rata-rata modal bandar (VWAP).")
-                    st.write(f"🔹 **Tranche 1 (Test Water - 30%):** Rp {entry_cicil_1}")
-                    st.write(f"🔥 **Tranche 2 (Pullback - 70%):** Rp {entry_cicil_2}")
-                else:
-                    st.success("✅ **ZONA AKUMULASI AMAN:** Harga merapat ke ekuilibrium market harian.")
-                    st.write(f"🔹 **Tranche 1 (Masuk Awal - 50%):** Rp {entry_cicil_1}")
-                    st.write(f"🔹 **Tranche 2 (Jaring Bawah - 50%):** Rp {entry_cicil_2}")
-
-                st.markdown("---")
-                st.markdown("### 🛡️ Target Realisasi Cuan")
-                
-                modal_terpakai = entry * total_lot * 100
-                if modal_terpakai > 0:
-                    jual_tp1_val = tp1 * total_lot * 100
-                    estimasi_fee_tp1 = (modal_terpakai + jual_tp1_val) * fee_broker
-                    net_rp_tp1 = (jual_tp1_val - modal_terpakai) - estimasi_fee_tp1
-                    net_persen_tp1 = (net_rp_tp1 / modal_terpakai) * 100
-                    
-                    jual_tp2_val = tp2 * total_lot * 100
-                    estimasi_fee_turn = (modal_terpakai + jual_tp2_val) * fee_broker
-                    net_rp_tp2 = (jual_tp2_val - modal_terpakai) - estimasi_fee_turn
-                    net_persen_tp2 = (net_rp_tp2 / modal_terpakai) * 100
-                    
-                    if net_persen_tp1 <= 0:
-                        st.error(f"⚠️ **TP1 (Rp {tp1:,}):** Margin dihabiskan oleh fee broker.")
-                    else:
-                        st.success(f"🎯 **TP1 (Quick Scalp 50%): Rp {tp1:,}** | Nett: {net_persen_tp1:.1f}% (~Rp {net_rp_tp1:,.0f})")
-                        
-                    st.info(f"🚀 **TP2 (Swing Intraday): Rp {tp2:,}** | Nett: {net_persen_tp2:.1f}% (~Rp {net_rp_tp2:,.0f})")
-                else:
-                    st.warning("Lot size 0. Jarak Stop Loss terlalu lebar atau Likuiditas mati.")
-                    
-                st.error(f"📉 **STOP LOSS STRICT:** Rp {sl:,.0f} *(Batas ARB Hari Ini: Rp {batas_arb:,.0f})*")
-                
-            with col_rules:
-                st.markdown("### 📝 Validasi Real Market")
-                if turnover_5m_rata_rata < 100000000:
-                    st.error(f"❌ **Saham Ilusi (Low Turnover):** Omset 5 mnt hanya Rp {turnover_5m_rata_rata/1000000:,.1f} Jt. Rawan manipulasi Bid/Offer!")
-                elif tren_harian == "DOWNTREND 🔴" and skor_utama >= 60:
-                    st.warning("⚠️ **REBOUND PLAY:** Spekulatif pantulan cepat. Wajib Hit & Run!")
-                elif tren_harian == "DOWNTREND 🔴": 
-                    st.error("❌ **Trend Hancur:** Market membuang emiten ini. Jangan menahan pisau jatuh.")
-                elif persen_kenaikan > 8.0: 
-                    st.error("❌ **Ekstrem FOMO:** Hindari masuk di zona pucuk harian.")
-                else: 
-                    st.success("🚀 **Clear for Takeoff:** Momentum dan struktur uptrend valid.")
-                    
-            st.markdown("---")
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(x=df_5m.index, open=df_5m['Open'], high=df_5m['High'], low=df_5m['Low'], close=df_5m['Close'], name="Harga"))
-            fig.add_trace(go.Scatter(x=df_5m.index, y=df_5m['VWAP'], line=dict(color='#3b82f6', width=2), name='VWAP'))
-            fig.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False, margin=dict(t=10, b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            render_tab_eksekusi(
+                entry=entry, vwap_val=vwap_val, curr_5m=curr_5m, 
+                persen_kenaikan=persen_kenaikan, jarak_vwap_persen=jarak_vwap_persen, 
+                total_lot=total_lot, fee_broker=fee_broker, tp1=tp1, tp2=tp2, sl=sl, 
+                batas_arb=batas_arb, turnover_5m_rata_rata=turnover_5m_rata_rata, 
+                tren_harian=tren_harian, skor_utama=skor_utama, df_5m=df_5m
+            )
 
         with tab2:
-            st.subheader(f"📰 Katalis Media: {st.session_state.ticker_utama}")
-            berita_lokal = ambil_berita_indonesia(st.session_state.ticker_utama)
-            if berita_lokal:
-                for item in berita_lokal:
-                    st.markdown(f"🔹 **[{item['title']}]({item['link']})**")
-                    st.caption(f"🗞️ Sumber: {item['source']} | 🕒 {item['date']}")
-            else:
-                st.info("Market hening. Tidak ada sentimen berita penggerak.")
+            render_tab_sentimen(st.session_state.ticker_utama)
                 
         with tab3:
-            st.subheader("📖 Panduan Penggunaan & SOP Day Trader BEI")
-            
-            st.markdown("""
-            ### 🎯 5 Langkah Eksekusi Taktis
-            1. **Atur Amunisi (Sidebar Kiri):** Masukkan Total Modal yang siap di-tradingkan dan atur batas persentase *Cut Loss* (Risiko). Biarkan sistem menghitung batas lot maksimum yang aman untuk Anda beli.
-            2. **Perhatikan Sesi Jam (Indikator Atas):** * **Pagi (09:00 - 10:00 WIB):** Sesi paling agresif. Volatilitas sangat tinggi, cocok untuk eksekusi kilat.
-               * **Siang (10:00 - 14:00 WIB):** Rawan *sideways* dan *false breakout*. Disarankan untuk menahan diri (*wait & see*).
-               * **Sore (14:00 - 16:00 WIB):** Waktu ideal untuk mencari sinyal akumulasi saham guna strategi Beli Sore Jual Pagi (BSJP).
-            3. **Pantau Scanner (Top 3):** Sistem akan menyaring puluhan saham dari Daftar Pantauan untuk memunculkan emiten yang volume intraday-nya sedang diakumulasi oleh uang pintar.
-            4. **Deep Dive Emiten:** Ketik kode saham incaran dari daftar *Top 3* ke kolom **Analisis Saham Spesifik** di sidebar kiri untuk membedah target harga terperinci. Gunakan *Bypass Harga Real-Time* jika harga telat (*delay*).
-            5. **Eksekusi Order (Aplikasi Sekuritas):** Patuhi **Skenario Entry Anti-Guyur** (disarankan mecicil 2 titik) dan pastikan jumlah lot yang Anda input di sekuritas tidak melebihi rekomendasi **Safe Lot Size**.
-
-            ---
-            ### ⚠️ Rules Sistem & Keamanan Portofolio
-            * **Keamanan Anti-Ban (Teknis):** Sistem menggunakan eksekusi asinkronus `yfinance` untuk *Scanner* agar server terhindar dari pemblokiran otomatis, sementara bagian analisa mendalam diinjeksi dengan harga presisi *real-time* langsung dari *Google Finance* atau input manual (*Override*).
-            * **Disiplin Cut Loss:** Eksekusi Cut Loss di aplikasi Anda tanpa kompromi bila harga penutupan menyentuh angka **Stop Loss Strict**. Jangan pernah melakukan *averaging down* (menangkap pisau jatuh) saat tren harian berstatus *Downtrend*.
-            * **Validasi Likuiditas Manual:** Meskipun sistem sudah menyaring saham dengan Turnover minimal Rp 100 Juta, Anda **WAJIB** mengecek ketebalan lot *Bid-Offer* dan *Running Trade* secara langsung di aplikasi sekuritas (seperti Stockbit/Trimegah) sebelum menekan tombol Hajar Kanan (HAKA).
-            """)
+            render_tab_rules()
             
         with tab4:
-            st.subheader("💰 Radar Saham Deviden Diskon (Bottom Fishing)")
-            st.write("Mendeteksi saham dari Daftar Pantauan yang harganya anjlok >5% dalam 1 Minggu Terakhir.")
-            
-            with st.spinner("Memindai saham diskon di market..."):
-                top_10_diskon = scan_saham_dividen(daftar_pantauan)
-                
-            if top_10_diskon:
-                st.success(f"✅ **Top {len(top_10_diskon)} Saham Diskon Ditemukan!**")
-                
-                # GRID SYSTEM: Maksimal 5 kolom per baris agar rapi dan tidak berdesakan
-                MAX_COLS = 5 
-                for i in range(0, len(top_10_diskon), MAX_COLS):
-                    baris_saham = top_10_diskon[i:i+MAX_COLS]
-                    cols_diskon = st.columns(len(baris_saham))
-                    
-                    for j, data in enumerate(baris_saham):
-                        with cols_diskon[j]:
-                            # Margin-bottom ditambahkan agar ada jarak vertikal antar baris
-                            st.markdown(f"""
-                            <div style="background-color: #2b1f1f; padding: 15px; border-radius: 12px; border-left: 5px solid #ef4444; margin-bottom: 15px;">
-                                <h2 style="margin:0; color: #f87171;">{data['ticker']}</h2>
-                                <h1 style="margin: 5px 0; color: white; font-size: 1.8rem;">{data['penurunan_persen']:.2f}%</h1>
-                                <p style="margin:0; color: #e5e7eb; font-size: 0.9rem;">Harga Skrg: <b>Rp {data['harga_sekarang']:,.0f}</b></p>
-                                <p style="margin:0; color: #9ca3af; font-size: 0.8rem;"><del>{data.get('label_referensi', 'Harga Referensi')}: Rp {data['harga_minggu_lalu']:,.0f}</del></p>
-                                <hr style="border-color: #4b5563; margin: 10px 0;">
-                                <p style="margin:0; color: #10b981; font-size: 0.85rem;">🔼 Res: Rp {data['resistan']:,.0f}</p>
-                                <p style="margin:0; color: #ef4444; font-size: 0.85rem;">🔽 Sup: Rp {data['support']:,.0f}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-            else:
-                st.info("⚠️ Saat ini belum ada saham di daftar pantauan yang turun lebih dari 5% dalam 1 minggu terakhir.")
+            render_tab_saham_deviden_diskon(daftar_pantauan)
+
 else:
     st.error("Gagal menarik data. Pastikan format ticker benar (contoh: BBCA) dan koneksi server aktif.")
