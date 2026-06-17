@@ -14,7 +14,7 @@ from data_fetcher import ambil_harga_realtime, get_market_data, ambil_berita_ind
 from tab_eksekusi import render_tab_eksekusi
 from tab_sentimen import render_tab_sentimen
 from tab_rules import render_tab_rules
-from tab_diskon import render_tab_diskon
+from tab_saham_deviden_diskon import render_tab_saham_deviden_diskon
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Trading Plan Pro V8.2", layout="wide", page_icon="🦅")
