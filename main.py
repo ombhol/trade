@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from utils import sesuaikan_fraksi_bei, hitung_batas_ara_arb, cek_waktu_trading
 from indicators import calculate_indicators, calculate_daily_atr
 from scanner import scan_top_saham
-# --from tab_saham_deviden_diskon import scan_tab_saham_deviden_diskon
+from saham_dividen_diskon import scan_saham_dividen
 from data_fetcher import ambil_harga_realtime, get_market_data, ambil_berita_indonesia
 
 # --- IMPORT MODUL TAB BARU ---
@@ -227,11 +227,9 @@ if not df_5m.empty and not df_1d.empty:
         
         with tab1:
             render_tab_eksekusi(
-                entry=entry, vwap_val=vwap_val, curr_5m=curr_5m, 
-                persen_kenaikan=persen_kenaikan, jarak_vwap_persen=jarak_vwap_persen, 
-                total_lot=total_lot, fee_broker=fee_broker, tp1=tp1, tp2=tp2, sl=sl, 
-                batas_arb=batas_arb, turnover_5m_rata_rata=turnover_5m_rata_rata, 
-                tren_harian=tren_harian, skor_utama=skor_utama, df_5m=df_5m
+                entry, vwap_val, curr_5m, persen_kenaikan, jarak_vwap_persen, 
+                total_lot, fee_broker, tp1, tp2, sl, batas_arb, 
+                turnover_5m_rata_rata, tren_harian, skor_utama, df_5m
             )
 
         with tab2:
