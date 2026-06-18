@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from utils import sesuaikan_fraksi_bei, hitung_batas_ara_arb, cek_waktu_trading
 from indicators import calculate_indicators, calculate_daily_atr
 from scanner import scan_top_saham
-from saham_dividen_diskon import scan_saham_dividen
+from saham_deviden_diskon import scan_saham_deviden
 from data_fetcher import ambil_harga_realtime, get_market_data, ambil_berita_indonesia
 
 # --- IMPORT MODUL TAB BARU ---
