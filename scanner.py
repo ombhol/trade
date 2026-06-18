@@ -2,6 +2,7 @@
 import streamlit as st
 import yfinance as yf
 import concurrent.futures
+import time  # <-- IMPORT BARU UNTUK JEDA
 from data_fetcher import clean_yfinance_columns
 from indicators import calculate_indicators
 
@@ -46,13 +47,24 @@ def proses_satu_saham(ticker):
         pass
     return None
 
-@st.cache_data(ttl=60) 
+# Naikkan memori cache dari 60 detik menjadi 300 detik (5 menit) agar aman
+@st.cache_data(ttl=300, show_spinner=False) 
 def scan_top_saham(watchlist):
     hasil_scan = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(proses_satu_saham, ticker): ticker for ticker in watchlist}
+    
+    # max_workers diturunkan sedikit menjadi 3 agar tarikan data tidak terlalu brutal di latar belakang
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {}
+        for ticker in watchlist:
+            # Submit tugas ke thread pool satu per satu
+            futures[executor.submit(proses_satu_saham, ticker)] = ticker
+            
+            # --- INI KUNCINYA: Jeda 0.5 detik sebelum memanggil saham berikutnya ---
+            time.sleep(0.5)
+            
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
             if result:
                 hasil_scan.append(result)
+                
     return sorted(hasil_scan, key=lambda x: x['skor'], reverse=True)[:3]
