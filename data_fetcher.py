@@ -66,7 +66,7 @@ def ambil_berita_indonesia(ticker):
     except Exception: pass
     return daftar_berita
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def get_market_data(ticker):
     try:
         df_5m = yf.download(f"{ticker}.JK", period="5d", interval="5m", progress=False)
