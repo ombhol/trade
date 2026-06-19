@@ -2,11 +2,41 @@ import streamlit as st
 import plotly.graph_objects as go
 from utils import sesuaikan_fraksi_bei
 
-def render_tab_eksekusi(entry, vwap_val, curr_5m, persen_kenaikan, jarak_vwap_persen, total_lot, fee_broker, tp1, tp2, sl, batas_arb, turnover_5m_rata_rata, tren_harian, skor_utama, df_5m):
+def hitung_auto_rejection(harga_acuan):
+    """
+    Fungsi untuk menghitung batas ARA dan ARB secara otomatis 
+    berdasarkan peraturan persentase BEI (contoh: simetris).
+    """
+    if harga_acuan < 50:
+        return 50, 50
+    
+    # Menentukan persentase berdasarkan rentang harga harian
+    if 50 <= harga_acuan <= 200:
+        persen = 0.35  # 35%
+    elif 200 < harga_acuan <= 5000:
+        persen = 0.25  # 25%
+    else:
+        persen = 0.20  # 20%
+        
+    ara_mentah = harga_acuan * (1 + persen)
+    arb_mentah = harga_acuan * (1 - persen)
+    
+    batas_ara = sesuaikan_fraksi_bei(round(ara_mentah))
+    batas_arb = sesuaikan_fraksi_bei(round(arb_mentah))
+    
+    if batas_arb < 50:
+        batas_arb = 50
+        
+    return batas_ara, batas_arb
+
+def render_tab_eksekusi(entry, vwap_val, curr_5m, persen_kenaikan, jarak_vwap_persen, total_lot, fee_broker, tp1, tp2, sl, harga_acuan, turnover_5m_rata_rata, tren_harian, skor_utama, df_5m, bandarmologi_h1):
     col_plan, col_rules = st.columns([1.5, 1])
     entry_cicil_1 = sesuaikan_fraksi_bei(entry)
     entry_cicil_2 = sesuaikan_fraksi_bei(vwap_val) if vwap_val > 0 else entry
     if entry_cicil_2 >= entry_cicil_1: entry_cicil_2 = sesuaikan_fraksi_bei(float(curr_5m['EMA20']))
+
+    # Hitung otomatis batas atas dan batas bawah sesuai harga acuan/open
+    batas_ara, batas_arb = hitung_auto_rejection(harga_acuan)
 
     with col_plan:
         st.markdown("### 🎯 Skenario Entry Anti-Guyur")
@@ -21,6 +51,9 @@ def render_tab_eksekusi(entry, vwap_val, curr_5m, persen_kenaikan, jarak_vwap_pe
 
         st.markdown("---")
         st.markdown("### 🛡️ Target Realisasi Cuan")
+        
+        # UI ARA & ARB Otomatis
+        st.markdown(f"**Batas Harian (Acuan: Rp {harga_acuan}):** 🟢 ARA: **Rp {batas_ara:,.0f}** | 🔴 ARB: **Rp {batas_arb:,.0f}**")
         
         modal_terpakai = entry * total_lot * 100
         if modal_terpakai > 0:
@@ -43,7 +76,7 @@ def render_tab_eksekusi(entry, vwap_val, curr_5m, persen_kenaikan, jarak_vwap_pe
         else:
             st.warning("Lot size 0. Jarak Stop Loss terlalu lebar atau Likuiditas mati.")
             
-        st.error(f"📉 **STOP LOSS STRICT:** Rp {sl:,.0f} *(Batas ARB Hari Ini: Rp {batas_arb:,.0f})*")
+        st.error(f"📉 **STOP LOSS STRICT:** Rp {sl:,.0f} *(Disiplin Cutloss)*")
         
     with col_rules:
         st.markdown("### 📝 Validasi Real Market")
@@ -58,6 +91,11 @@ def render_tab_eksekusi(entry, vwap_val, curr_5m, persen_kenaikan, jarak_vwap_pe
         else: 
             st.success("🚀 **Clear for Takeoff:** Momentum dan struktur uptrend valid.")
             
+        st.markdown("---")
+        # UI Bandarmologi
+        st.markdown("### 🕵️ Bandarmologi (H-1)")
+        st.info(f"{bandarmologi_h1}")
+        
     st.markdown("---")
     fig = go.Figure()
     fig.add_trace(go.Candlestick(x=df_5m.index, open=df_5m['Open'], high=df_5m['High'], low=df_5m['Low'], close=df_5m['Close'], name="Harga"))
