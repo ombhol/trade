@@ -1,1 +1,0 @@
-# Trading-saham-syariah
