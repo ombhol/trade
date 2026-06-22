@@ -2,10 +2,16 @@
 import streamlit as st
 import yfinance as yf
 import concurrent.futures
+import time
+import random
 from data_fetcher import clean_yfinance_columns
 from indicators import calculate_indicators
 
 def proses_satu_saham(ticker):
+    # PERBAIKAN: Menambahkan jeda acak 0.5 - 1.5 detik sebagai penahan (rate-limiter)
+    # Ini mencegah IP terkena blokir otomatis (HTTP 429) akibat hit paralel yang terlalu masif ke server yfinance
+    time.sleep(random.uniform(0.5, 1.5))
+    
     try:
         df = yf.download(f"{ticker}.JK", period="5d", interval="5m", progress=False)
         df = clean_yfinance_columns(df)
