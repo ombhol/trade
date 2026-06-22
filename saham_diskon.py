@@ -21,6 +21,7 @@ def get_fundamental_data(tickers):
             der = info.get('debtToEquity', 0) # yfinance mengembalikan persentase, misal 40 = 0.4x
             cr = info.get('currentRatio', 0)
             div_yield = info.get('dividendYield', 0)
+            div_rp = info.get('trailingAnnualDividendRate') or info.get('dividendRate') or 0 # <--- TAMBAHAN DEVIDEN RP
             eps = info.get('trailingEps', 0)
             harga = info.get('previousClose', 0)
 
@@ -31,6 +32,7 @@ def get_fundamental_data(tickers):
             der = (der / 100) if der is not None else 0 # Konversi ke satuan kali (x)
             cr = cr if cr is not None else 0
             div_yield = div_yield if div_yield is not None else 0
+            div_rp = div_rp if div_rp is not None else 0
             eps = eps if eps is not None else 0
             
             # --- SISTEM SCORING BERDASARKAN KRITERIA USER ---
@@ -51,6 +53,7 @@ def get_fundamental_data(tickers):
                 'ROE (%)': round(roe * 100, 2),
                 'DER (x)': round(der, 2),
                 'Current Ratio (x)': round(cr, 2),
+                'Dividen (Rp)': round(div_rp, 2), # <--- KOLOM BARU DI TABEL
                 'Div Yield (%)': round(div_yield * 100, 2),
                 'EPS': round(eps, 2),
                 'Skor Validasi': skor
@@ -101,7 +104,7 @@ def render_saham_diskon_tab(*args, **kwargs):
     col1.metric("Valuasi Diskon", f"PBV {top_saham['PBV (x)']}x", f"PER {top_saham['PER (x)']}x", delta_color="inverse")
     col2.metric("Profitabilitas", f"ROE {top_saham['ROE (%)']}%", f"EPS Rp {top_saham['EPS']:,.0f}")
     col3.metric("Kesehatan", f"DER {top_saham['DER (x)']}x", f"CR {top_saham['Current Ratio (x)']}x", delta_color="inverse")
-    col4.metric("Kompensasi", f"Yield {top_saham['Div Yield (%)']}%")
+    col4.metric("Kompensasi", f"Yield {top_saham['Div Yield (%)']}%", f"Rp {top_saham['Dividen (Rp)']:,.0f}/lembar")
 
     st.markdown("---")
     st.markdown("### 📋 Papan Peringkat Screening (Diurutkan dari Terbaik)")
@@ -116,6 +119,7 @@ def render_saham_diskon_tab(*args, **kwargs):
         idx_roe = row.index.get_loc('ROE (%)')
         idx_der = row.index.get_loc('DER (x)')
         idx_cr = row.index.get_loc('Current Ratio (x)')
+        idx_div_rp = row.index.get_loc('Dividen (Rp)') # <--- TAMBAHAN INDEX
         idx_div = row.index.get_loc('Div Yield (%)')
         idx_eps = row.index.get_loc('EPS')
         
@@ -125,8 +129,12 @@ def render_saham_diskon_tab(*args, **kwargs):
         if row['ROE (%)'] >= 10: styles[idx_roe] = 'background-color: rgba(30, 70, 32, 0.5)'
         if 0 <= row['DER (x)'] < 1: styles[idx_der] = 'background-color: rgba(30, 70, 32, 0.5)'
         if row['Current Ratio (x)'] >= 1: styles[idx_cr] = 'background-color: rgba(30, 70, 32, 0.5)'
-        if row['Div Yield (%)'] >= 4: styles[idx_div] = 'background-color: rgba(30, 70, 32, 0.5)'
         if row['EPS'] > 0: styles[idx_eps] = 'background-color: rgba(30, 70, 32, 0.5)'
+        
+        # Highlight Deviden RP dan Yield secara bersamaan jika yield > 4%
+        if row['Div Yield (%)'] >= 4: 
+            styles[idx_div] = 'background-color: rgba(30, 70, 32, 0.5)'
+            styles[idx_div_rp] = 'background-color: rgba(30, 70, 32, 0.5)'
         
         return styles
         
@@ -139,6 +147,7 @@ def render_saham_diskon_tab(*args, **kwargs):
             'ROE (%)': "{:.2f}%",
             'DER (x)': "{:.2f}",
             'Current Ratio (x)': "{:.2f}",
+            'Dividen (Rp)': "Rp {:,.0f}", # <--- FORMAT RUPIAH
             'Div Yield (%)': "{:.2f}%",
             'EPS': "Rp {:,.0f}"
         }),
