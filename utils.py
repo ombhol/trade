@@ -37,11 +37,15 @@ def cek_waktu_trading():
     jam = waktu_sekarang.hour
     menit = waktu_sekarang.minute
     waktu_desimal = jam + (menit / 60)
+    hari_ini = waktu_sekarang.weekday() # 0 = Senin, 4 = Jumat, 5 = Sabtu, 6 = Minggu
 
-    # PERBAIKAN 2: Deteksi Jam Istirahat Bursa Sesi 1
-    # Memblokir waktu antara 12.00 s/d 13.30 WIB agar algoritma tahu likuiditas sedang beku
-    if 12.0 <= waktu_desimal < 13.5:
-        return "Istirahat Sesi 1 (Market Closed) ⏸️", "warning"
+    # PERBAIKAN 2: Deteksi Jam Istirahat Bursa Sesi 1 Berdasarkan Hari (Adaptif)
+    if hari_ini == 4:  # Spesifik Hari Jumat (11:30 - 14:00 WIB)
+        if 11.5 <= waktu_desimal < 14.0:
+            return "Istirahat Sesi 1 (Jumat - Market Closed) ⏸️", "warning"
+    else:  # Hari Senin - Kamis (12:00 - 13:30 WIB)
+        if 12.0 <= waktu_desimal < 13.5:
+            return "Istirahat Sesi 1 (Normal - Market Closed) ⏸️", "warning"
 
     if 9 <= jam < 10: 
         return "Pagi (High Probability - Volatilitas Tinggi) 🔥", "success"
