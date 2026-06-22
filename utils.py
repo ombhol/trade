@@ -17,7 +17,8 @@ def sesuaikan_fraksi_bei(harga, tipe='normal'):
         return round(harga / fraksi) * fraksi
 
 def hitung_batas_ara_arb(close_kemarin):
-    if close_kemarin < 200:
+    # PERBAIKAN 1: Logika fraksi regulasi BEI (Inklusif untuk batas atas)
+    if close_kemarin <= 200: 
         limit = 0.35 
     elif close_kemarin <= 5000:
         limit = 0.25 
@@ -27,12 +28,24 @@ def hitung_batas_ara_arb(close_kemarin):
     ara = sesuaikan_fraksi_bei(close_kemarin * (1 + limit))
     arb = sesuaikan_fraksi_bei(close_kemarin * (1 - limit))
     
+    # Proteksi gocap (Saham tidak bisa ARB di bawah Rp 50 di pasar reguler)
     if arb < 50: arb = 50 
     return ara, arb
 
 def cek_waktu_trading():
     waktu_sekarang = datetime.utcnow() + timedelta(hours=7)
     jam = waktu_sekarang.hour
-    if 9 <= jam < 10: return "Pagi (High Probability - Volatilitas Tinggi) 🔥", "success"
-    elif 10 <= jam < 14: return "Siang (Low Probability - Rawan Jebakan / Sideways) ⚠️", "warning"
-    else: return "Sore (Fase Penutupan / Mark-up Bandar) 📊", "info"
+    menit = waktu_sekarang.minute
+    waktu_desimal = jam + (menit / 60)
+
+    # PERBAIKAN 2: Deteksi Jam Istirahat Bursa Sesi 1
+    # Memblokir waktu antara 12.00 s/d 13.30 WIB agar algoritma tahu likuiditas sedang beku
+    if 12.0 <= waktu_desimal < 13.5:
+        return "Istirahat Sesi 1 (Market Closed) ⏸️", "warning"
+
+    if 9 <= jam < 10: 
+        return "Pagi (High Probability - Volatilitas Tinggi) 🔥", "success"
+    elif 10 <= jam < 14: 
+        return "Siang (Low Probability - Rawan Jebakan / Sideways) ⚠️", "warning"
+    else: 
+        return "Sore (Fase Penutupan / Mark-up Bandar) 📊", "info"
