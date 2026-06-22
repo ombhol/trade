@@ -1,20 +1,24 @@
 # main.py
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 
 # --- IMPORT MODULES KUSTOM ---
 from utils import sesuaikan_fraksi_bei, hitung_batas_ara_arb, cek_waktu_trading
 from indicators import calculate_indicators, calculate_daily_atr
-from data_fetcher import ambil_harga_realtime, get_market_data, ambil_berita_indonesia
+from data_fetcher import ambil_harga_realtime, get_market_data
 from scanner import scan_top_saham
+
+# --- IMPORT MODULES UI TERPISAH ---
+from eksekusi_order import render_eksekusi_tab
+from sentimen_berita import render_sentimen_tab
+from rules import render_rules_tab
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Trading Plan Pro V8.2", layout="wide", page_icon="🦅")
 
 # --- 1. INISIALISASI MEMORI (SESSION STATE) ---
 if 'ticker_utama' not in st.session_state:
-    st.session_state.ticker_utama = "PSAB" # Ticker default awal
+    st.session_state.ticker_utama = "PSAB"
 if 'sudah_scan_awal' not in st.session_state:
     st.session_state.sudah_scan_awal = False
 
@@ -22,9 +26,7 @@ if 'sudah_scan_awal' not in st.session_state:
 with st.sidebar:
     st.markdown("### ⚙️ Parameter Trading (Real Market)")
     
-    # 2. HUBUNGKAN INPUT DENGAN MEMORI
     ticker_input = st.text_input("Analisis Saham Spesifik:", value=st.session_state.ticker_utama).upper()
-    # Jika user mengetik manual, update memorinya
     if ticker_input != st.session_state.ticker_utama:
         st.session_state.ticker_utama = ticker_input
         
@@ -49,15 +51,10 @@ st.subheader("🏆 Top 3 Sinyal (Real Turnover > 100 Jt/5 Menit)")
 with st.spinner("Memindai radar uang pintar secara paralel..."):
     top_3 = scan_top_saham(daftar_pantauan)
 
-# 3. LOGIKA INJEKSI OTOMATIS SAAT PERTAMA KALI BROWSER DIBUKA
 if top_3 and not st.session_state.sudah_scan_awal:
-    # Ambil juara 1 dari Top 3
     saham_terbaik = top_3[0]['ticker']
-    # Ubah memori ticker utama menjadi saham terbaik
     st.session_state.ticker_utama = saham_terbaik
-    # Tandai bahwa scan awal sudah dilakukan agar tidak berulang terus-menerus
     st.session_state.sudah_scan_awal = True
-    # Rerun instan agar chart di bawah langsung membedah saham juara 1
     st.rerun()
 
 if top_3:
@@ -77,7 +74,7 @@ else:
     st.info("Scanner Kosong: Belum ada saham yang memenuhi kriteria.")
 st.markdown("---")
 
-# --- UI MAIN: REKOMENDASI STRATEGI SESI (HIGH SENSITIVITY) ---
+# --- UI MAIN: REKOMENDASI STRATEGI SESI ---
 if top_3:
     st.markdown("### 🧭 Peta Taktis & Eksekusi Sesi Ini")
     
@@ -122,14 +119,12 @@ if top_3:
     st.markdown("---")
 
 # --- UI MAIN: DEEP DIVE ANALISIS ---
-# 4. UBAH KE st.session_state.ticker_utama
 st.subheader(f"🔎 Deep Dive Analisis: {st.session_state.ticker_utama}")
 
 df_5m, df_1d = get_market_data(st.session_state.ticker_utama)
 
 if not df_5m.empty and not df_1d.empty:
     
-    # Injeksi Real-time Engine & Manual Override
     if harga_manual > 0:
         df_5m.loc[df_5m.index[-1], 'Close'] = float(harga_manual)
         st.success(f"⚡ **Manual Override Active:** Menggunakan harga input pengguna (Rp {harga_manual:,.0f})")
@@ -160,13 +155,11 @@ if not df_5m.empty and not df_1d.empty:
         close_kemarin = float(df_1d['Close'].iloc[-2]) if len(df_1d) > 1 else entry
         persen_kenaikan = ((entry - close_kemarin) / close_kemarin) * 100 if close_kemarin > 0 else 0
         
-        # Batas ARA / ARB
         batas_ara, batas_arb = hitung_batas_ara_arb(close_kemarin)
         
         atr_daily = calculate_daily_atr(df_1d)
         atr_final = atr_daily if atr_daily > 0 else (float(curr_5m['ATR']) * 5)
         
-        # Stop Loss & Take Profit logic
         sl_mentah = entry - (atr_final * 1.0)
         sl = sesuaikan_fraksi_bei(sl_mentah, 'sl')
         if sl <= batas_arb: sl = batas_arb
@@ -184,7 +177,6 @@ if not df_5m.empty and not df_1d.empty:
         if tp1 > batas_ara: tp1 = batas_ara
         if tp2 > batas_ara: tp2 = batas_ara
         
-        # Safe Lot Management
         jarak_sl_rp = entry - sl
         lot_by_risk = int(((modal_trading * risiko_persen) / max(1, jarak_sl_rp)) / 100) if jarak_sl_rp > 0 else 0
         
@@ -219,96 +211,16 @@ if not df_5m.empty and not df_1d.empty:
         tab1, tab2, tab3 = st.tabs(["📊 Eksekusi Order & Net PnL", "📰 Sentimen & Berita", "📖 Rules & Panduan"])
         
         with tab1:
-            col_plan, col_rules = st.columns([1.5, 1])
-            entry_cicil_1 = sesuaikan_fraksi_bei(entry)
-            entry_cicil_2 = sesuaikan_fraksi_bei(vwap_val) if vwap_val > 0 else entry
-            if entry_cicil_2 >= entry_cicil_1: entry_cicil_2 = sesuaikan_fraksi_bei(float(curr_5m['EMA20']))
-
-            with col_plan:
-                st.markdown("### 🎯 Skenario Entry Anti-Guyur")
-                if persen_kenaikan > 5.5 or jarak_vwap_persen > 2.5:
-                    st.warning(f"🚨 **RAWAN GUYURAN:** Harga sudah melesat jauh dari rata-rata modal bandar (VWAP).")
-                    st.write(f"🔹 **Tranche 1 (Test Water - 30%):** Rp {entry_cicil_1}")
-                    st.write(f"🔥 **Tranche 2 (Pullback - 70%):** Rp {entry_cicil_2}")
-                else:
-                    st.success("✅ **ZONA AKUMULASI AMAN:** Harga merapat ke ekuilibrium market harian.")
-                    st.write(f"🔹 **Tranche 1 (Masuk Awal - 50%):** Rp {entry_cicil_1}")
-                    st.write(f"🔹 **Tranche 2 (Jaring Bawah - 50%):** Rp {entry_cicil_2}")
-
-                st.markdown("---")
-                st.markdown("### 🛡️ Target Realisasi Cuan")
-                
-                modal_terpakai = entry * total_lot * 100
-                if modal_terpakai > 0:
-                    jual_tp1_val = tp1 * total_lot * 100
-                    estimasi_fee_tp1 = (modal_terpakai + jual_tp1_val) * fee_broker
-                    net_rp_tp1 = (jual_tp1_val - modal_terpakai) - estimasi_fee_tp1
-                    net_persen_tp1 = (net_rp_tp1 / modal_terpakai) * 100
-                    
-                    jual_tp2_val = tp2 * total_lot * 100
-                    estimasi_fee_turn = (modal_terpakai + jual_tp2_val) * fee_broker
-                    net_rp_tp2 = (jual_tp2_val - modal_terpakai) - estimasi_fee_turn
-                    net_persen_tp2 = (net_rp_tp2 / modal_terpakai) * 100
-                    
-                    if net_persen_tp1 <= 0:
-                        st.error(f"⚠️ **TP1 (Rp {tp1:,}):** Margin dihabiskan oleh fee broker.")
-                    else:
-                        st.success(f"🎯 **TP1 (Quick Scalp 50%): Rp {tp1:,}** | Nett: {net_persen_tp1:.1f}% (~Rp {net_rp_tp1:,.0f})")
-                        
-                    st.info(f"🚀 **TP2 (Swing Intraday): Rp {tp2:,}** | Nett: {net_persen_tp2:.1f}% (~Rp {net_rp_tp2:,.0f})")
-                else:
-                    st.warning("Lot size 0. Jarak Stop Loss terlalu lebar atau Likuiditas mati.")
-                    
-                st.error(f"📉 **STOP LOSS STRICT:** Rp {sl:,.0f} *(Batas ARB Hari Ini: Rp {batas_arb:,.0f})*")
-                
-            with col_rules:
-                st.markdown("### 📝 Validasi Real Market")
-                if turnover_5m_rata_rata < 100000000:
-                    st.error(f"❌ **Saham Ilusi (Low Turnover):** Omset 5 mnt hanya Rp {turnover_5m_rata_rata/1000000:,.1f} Jt. Rawan manipulasi Bid/Offer!")
-                elif tren_harian == "DOWNTREND 🔴" and skor_utama >= 60:
-                    st.warning("⚠️ **REBOUND PLAY:** Spekulatif pantulan cepat. Wajib Hit & Run!")
-                elif tren_harian == "DOWNTREND 🔴": 
-                    st.error("❌ **Trend Hancur:** Market membuang emiten ini. Jangan menahan pisau jatuh.")
-                elif persen_kenaikan > 8.0: 
-                    st.error("❌ **Ekstrem FOMO:** Hindari masuk di zona pucuk harian.")
-                else: 
-                    st.success("🚀 **Clear for Takeoff:** Momentum dan struktur uptrend valid.")
-                    
-            st.markdown("---")
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(x=df_5m.index, open=df_5m['Open'], high=df_5m['High'], low=df_5m['Low'], close=df_5m['Close'], name="Harga"))
-            fig.add_trace(go.Scatter(x=df_5m.index, y=df_5m['VWAP'], line=dict(color='#3b82f6', width=2), name='VWAP'))
-            fig.update_layout(template="plotly_dark", height=400, xaxis_rangeslider_visible=False, margin=dict(t=10, b=10))
-            st.plotly_chart(fig, use_container_width=True)
+            render_eksekusi_tab(
+                entry, vwap_val, curr_5m, persen_kenaikan, jarak_vwap_persen,
+                total_lot, tp1, tp2, sl, batas_arb, fee_broker, turnover_5m_rata_rata,
+                tren_harian, skor_utama, df_5m
+            )
 
         with tab2:
-            st.subheader(f"📰 Katalis Media: {st.session_state.ticker_utama}")
-            berita_lokal = ambil_berita_indonesia(st.session_state.ticker_utama)
-            if berita_lokal:
-                for item in berita_lokal:
-                    st.markdown(f"🔹 **[{item['title']}]({item['link']})**")
-                    st.caption(f"🗞️ Sumber: {item['source']} | 🕒 {item['date']}")
-            else:
-                st.info("Market hening. Tidak ada sentimen berita penggerak.")
+            render_sentimen_tab(st.session_state.ticker_utama)
                 
         with tab3:
-            st.subheader("📖 Panduan Penggunaan & SOP Day Trader BEI")
-            
-            st.markdown("""
-            ### 🎯 5 Langkah Eksekusi Taktis
-            1. **Atur Amunisi (Sidebar Kiri):** Masukkan Total Modal yang siap di-tradingkan dan atur batas persentase *Cut Loss* (Risiko). Biarkan sistem menghitung batas lot maksimum yang aman untuk Anda beli.
-            2. **Perhatikan Sesi Jam (Indikator Atas):** * **Pagi (09:00 - 10:00 WIB):** Sesi paling agresif. Volatilitas sangat tinggi, cocok untuk eksekusi kilat.
-               * **Siang (10:00 - 14:00 WIB):** Rawan *sideways* dan *false breakout*. Disarankan untuk menahan diri (*wait & see*).
-               * **Sore (14:00 - 16:00 WIB):** Waktu ideal untuk mencari sinyal akumulasi saham guna strategi Beli Sore Jual Pagi (BSJP).
-            3. **Pantau Scanner (Top 3):** Sistem akan menyaring puluhan saham dari Daftar Pantauan untuk memunculkan emiten yang volume intraday-nya sedang diakumulasi oleh uang pintar.
-            4. **Deep Dive Emiten:** Ketik kode saham incaran dari daftar *Top 3* ke kolom **Analisis Saham Spesifik** di sidebar kiri untuk membedah target harga terperinci. Gunakan *Bypass Harga Real-Time* jika harga telat (*delay*).
-            5. **Eksekusi Order (Aplikasi Sekuritas):** Patuhi **Skenario Entry Anti-Guyur** (disarankan mecicil 2 titik) dan pastikan jumlah lot yang Anda input di sekuritas tidak melebihi rekomendasi **Safe Lot Size**.
-
-            ---
-            ### ⚠️ Rules Sistem & Keamanan Portofolio
-            * **Keamanan Anti-Ban (Teknis):** Sistem menggunakan eksekusi asinkronus `yfinance` untuk *Scanner* agar server terhindar dari pemblokiran otomatis, sementara bagian analisa mendalam diinjeksi dengan harga presisi *real-time* langsung dari *Google Finance* atau input manual (*Override*).
-            * **Disiplin Cut Loss:** Eksekusi Cut Loss di aplikasi Anda tanpa kompromi bila harga penutupan menyentuh angka **Stop Loss Strict**. Jangan pernah melakukan *averaging down* (menangkap pisau jatuh) saat tren harian berstatus *Downtrend*.
-            * **Validasi Likuiditas Manual:** Meskipun sistem sudah menyaring saham dengan Turnover minimal Rp 100 Juta, Anda **WAJIB** mengecek ketebalan lot *Bid-Offer* dan *Running Trade* secara langsung di aplikasi sekuritas (seperti Stockbit/Trimegah) sebelum menekan tombol Hajar Kanan (HAKA).
-            """)
+            render_rules_tab()
 else:
     st.error("Gagal menarik data. Pastikan format ticker benar (contoh: BBCA) dan koneksi server aktif.")
