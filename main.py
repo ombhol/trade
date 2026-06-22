@@ -12,6 +12,7 @@ from scanner import scan_top_saham
 from eksekusi_order import render_eksekusi_tab
 from sentimen_berita import render_sentimen_tab
 from rules import render_rules_tab
+from saham_diskon import render_saham_diskon_tab
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="Trading Plan Pro V8.2", layout="wide", page_icon="🦅")
@@ -208,7 +209,11 @@ if not df_5m.empty and not df_1d.empty:
             st.metric("Safe Lot Size", f"{total_lot} Lot", alasan_lot)
             st.metric("Skor Saham", f"{skor_utama} / 100")
         
-        tab1, tab2, tab3 = st.tabs(["📊 Eksekusi Order & Net PnL", "📰 Sentimen & Berita", "📖 Rules & Panduan"])
+       
+        # Ubah baris ini (tambahkan tab4 dan nama tab baru):
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 Eksekusi Order & Net PnL", "📰 Sentimen & Berita","📖 Rules & Panduan","🏷️ Saham Diskon"])
+        
+       
         
         with tab1:
             render_eksekusi_tab(
@@ -222,5 +227,7 @@ if not df_5m.empty and not df_1d.empty:
                 
         with tab3:
             render_rules_tab()
+        with tab4:
+            render_saham_diskon_tab(st.session_state.ticker_utama, entry, df_1d, df_5m)
 else:
     st.error("Gagal menarik data. Pastikan format ticker benar (contoh: BBCA) dan koneksi server aktif.")
