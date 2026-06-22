@@ -228,6 +228,6 @@ if not df_5m.empty and not df_1d.empty:
         with tab3:
             render_rules_tab()
         with tab4:
-            render_saham_diskon_tab(st.session_state.ticker_utama, entry, df_1d, df_5m)
+            render_saham_diskon_tab(daftar_pantauan)
 else:
     st.error("Gagal menarik data. Pastikan format ticker benar (contoh: BBCA) dan koneksi server aktif.")
