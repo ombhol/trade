@@ -1,146 +1,150 @@
+# saham_diskon.py
 import streamlit as st
 import pandas as pd
-from data_fetcher import get_market_data, ambil_harga_realtime # Pastikan modul ini diimpor
+import yfinance as yf
 
-def render_saham_diskon_tab(daftar_pantauan):
-    st.subheader("🏷️ Radar Saham Diskon (Top 10)")
+# Menggunakan cache agar tidak perlu loading lama setiap kali pindah tab
+# Data fundamental hanya ditarik 1x dan disimpan dalam memori (cache)
+@st.cache_data(ttl=3600) 
+def get_fundamental_data(tickers):
+    hasil = []
+    for ticker in tickers:
+        try:
+            # Tambahkan .JK untuk format Yahoo Finance Indonesia
+            t_jk = f"{ticker}.JK"
+            info = yf.Ticker(t_jk).info
+            
+            # Ekstraksi Data Fundamental
+            pbv = info.get('priceToBook', 0)
+            per = info.get('trailingPE', 0)
+            roe = info.get('returnOnEquity', 0)
+            der = info.get('debtToEquity', 0) # yfinance mengembalikan persentase, misal 40 = 0.4x
+            cr = info.get('currentRatio', 0)
+            div_yield = info.get('dividendYield', 0)
+            eps = info.get('trailingEps', 0)
+            harga = info.get('previousClose', 0)
+
+            # Membersihkan nilai None (jika data tidak tersedia di API)
+            pbv = pbv if pbv is not None else 0
+            per = per if per is not None else 0
+            roe = roe if roe is not None else 0
+            der = (der / 100) if der is not None else 0 # Konversi ke satuan kali (x)
+            cr = cr if cr is not None else 0
+            div_yield = div_yield if div_yield is not None else 0
+            eps = eps if eps is not None else 0
+            
+            # --- SISTEM SCORING BERDASARKAN KRITERIA USER ---
+            skor = 0
+            if 0 < pbv < 1.0: skor += 1   # Kriteria 1: PBV < 1
+            if 0 < per < 15: skor += 1    # Kriteria 1: PER < 15
+            if roe > 0.10: skor += 1      # Kriteria 2: ROE > 10%
+            if eps > 0: skor += 1         # Kriteria 2: Laba Positif (Tidak Minus)
+            if 0 <= der < 1: skor += 1    # Kriteria 3: DER < 1 (Utang Terkontrol)
+            if cr > 1: skor += 1          # Kriteria 3: Current Ratio > 1
+            if div_yield > 0.04: skor += 1 # Kriteria 4: Div Yield > 4% (Kompensasi Menunggu)
+            
+            hasil.append({
+                'Ticker': ticker,
+                'Harga': harga,
+                'PBV (x)': round(pbv, 2),
+                'PER (x)': round(per, 2),
+                'ROE (%)': round(roe * 100, 2),
+                'DER (x)': round(der, 2),
+                'Current Ratio (x)': round(cr, 2),
+                'Div Yield (%)': round(div_yield * 100, 2),
+                'EPS': round(eps, 2),
+                'Skor Validasi': skor
+            })
+        except Exception:
+            # Lewati jika error saat menarik data
+            continue
+            
+    return pd.DataFrame(hasil)
+
+# Menggunakan *args, **kwargs agar tidak error jika main.py mengirim variabel lain
+def render_saham_diskon_tab(*args, **kwargs):
+    st.subheader("🕵️‍♂️ Fundamental Value Screener (Saham Diskon)")
     
-    if not daftar_pantauan:
-        st.warning("⚠️ Daftar pantauan kosong. Silakan isi daftar saham di sidebar.")
-        return
-
-    # Menambahkan indikator loading karena melooping banyak saham membutuhkan waktu
-    with st.spinner("Memindai tingkat diskon dari seluruh daftar pantauan..."):
-        hasil_scan = []
-        
-        # 1. Pemantauan pada daftar pantauan
-        for ticker in daftar_pantauan:
-            try:
-                df_5m, df_1d = get_market_data(ticker)
-                
-                # Cek apakah kembalian API None atau DataFrame kosong
-                if df_1d is None or df_5m is None or df_1d.empty or df_5m.empty:
-                    continue
-                
-                # KOREKSI 1: Proteksi KeyError. Pastikan indikator sukses dihitung oleh modul lain
-                if 'VWAP' not in df_5m.columns or 'RSI' not in df_5m.columns:
-                    continue
-                    
-                # KOREKSI 2: Ambil harga real-time dengan proteksi tipe data (float)
-                try:
-                    harga_sekarang = ambil_harga_realtime(ticker)
-                    if not harga_sekarang or pd.isna(harga_sekarang) or float(harga_sekarang) <= 0:
-                        harga_sekarang = float(df_5m['Close'].iloc[-1])
-                    else:
-                        harga_sekarang = float(harga_sekarang)
-                except Exception:
-                    harga_sekarang = float(df_5m['Close'].iloc[-1])
-                    
-                # Kalkulasi Pucuk 5 Hari Terakhir (Daily)
-                high_5d = float(df_1d['High'].tail(5).max())
-                diskon_pucuk = ((high_5d - harga_sekarang) / high_5d) * 100 if high_5d > 0 else 0
-                
-                # Hanya proses saham yang sedang turun/diskon (> 0%)
-                if diskon_pucuk > 0:
-                    # Amankan dari IndexError jika semua baris dropna terhapus
-                    df_5m_clean = df_5m.dropna(subset=['VWAP', 'RSI'])
-                    if df_5m_clean.empty:
-                        continue
-                        
-                    curr_5m = df_5m_clean.iloc[-1]
-                    vwap_val = float(curr_5m['VWAP'])
-                    rsi_val = float(curr_5m['RSI'])
-                    
-                    status_vwap = "Under VWAP 🔥" if harga_sekarang < vwap_val else "Above VWAP ⚠️"
-                    
-                    hasil_scan.append({
-                        'Ticker': ticker,
-                        'Harga': harga_sekarang,
-                        'High_5D': high_5d,
-                        'Diskon (%)': round(diskon_pucuk, 2),
-                        'VWAP': vwap_val,
-                        'Status VWAP': status_vwap,
-                        'RSI 5m': round(rsi_val, 2)
-                    })
-            except Exception as e:
-                # Mengabaikan saham yang memicu error agar scanning saham lain tetap berjalan
-                continue
-        
-        if not hasil_scan:
-            st.info("Belum ada saham dari daftar pantauan yang masuk area diskon saat ini.")
-            return
-            
-        # 3. Urutkan dari yang diskon paling tinggi
-        df_hasil = pd.DataFrame(hasil_scan)
-        df_hasil = df_hasil.sort_values(by='Diskon (%)', ascending=False).reset_index(drop=True)
-        
-        # 4. Menampilkan max 10 saham dengan urutan diskon tertinggi
-        df_top_10 = df_hasil.head(10)
-        
-        # 2. Rekomendasi pemantauan paling bagus & alasannya
-        # Logika: Cari saham di Top 10 yang harganya di bawah VWAP dan RSI-nya terendah (Jenuh Jual)
-        kandidat_ideal = df_top_10[df_top_10['Harga'] < df_top_10['VWAP']]
-        
-        if not kandidat_ideal.empty:
-            # Jika ada yang Under VWAP, pilih yang RSI-nya paling oversold
-            rekomendasi = kandidat_ideal.sort_values(by='RSI 5m', ascending=True).iloc[0]
-        else:
-            # Jika tidak ada yang Under VWAP, ambil saja murni diskon tertinggi
-            rekomendasi = df_top_10.iloc[0]
-            
-        # --- UI LAYOUT REKOMENDASI UTAMA ---
-        st.markdown("### 🏆 Rekomendasi Pantauan Terbaik")
-        st.success(f"**{rekomendasi['Ticker']}** adalah kandidat diskon terbaik untuk diakumulasi saat ini.")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Harga Saat Ini", f"Rp {rekomendasi['Harga']:,.0f}")
-            st.write(f"📉 **Diskon dari Pucuk:** {rekomendasi['Diskon (%)']}%")
-        with col2:
-            st.metric("RSI Intraday (5m)", f"{rekomendasi['RSI 5m']}")
-            if rekomendasi['RSI 5m'] < 40:
-                st.write("🛒 **Status:** Oversold (Jenuh Jual)")
-            elif rekomendasi['RSI 5m'] > 70:
-                st.write("🚨 **Status:** Overbought (Jenuh Beli)")
-            else:
-                st.write("⚖️ **Status:** Netral")
-        with col3:
-            # Mencegah ZeroDivisionError jika API mengembalikan VWAP bernilai 0
-            vwap_rek = rekomendasi['VWAP']
-            if vwap_rek > 0:
-                jarak_vwap = (abs(vwap_rek - rekomendasi['Harga']) / vwap_rek) * 100
-            else:
-                jarak_vwap = 0
-                
-            st.metric("VWAP Harian", f"Rp {vwap_rek:,.0f}")
-            if rekomendasi['Harga'] < vwap_rek:
-                st.write(f"🔥 **Under VWAP:** Murah -{jarak_vwap:.1f}%")
-            else:
-                st.write(f"⚠️ **Above VWAP:** Premium +{jarak_vwap:.1f}%")
-
-        # Alasan Dinamis berdasarkan metrik
-        alasan_vwap = "Harganya saat ini berada di bawah rata-rata modal bandar intraday (Under VWAP), memberikan *margin of safety* yang aman dari risiko guyuran." if rekomendasi['Harga'] < vwap_rek else "Meskipun terdiskon dari area pucuk harian, harganya masih di atas rata-rata VWAP, disarankan untuk mengantre di area VWAP agar lebih aman."
-        alasan_rsi = "Tekanan jual sudah mereda ditandai dengan RSI yang masuk fase Oversold/Netral, sangat ideal untuk mulai *cicil buy* (Tranche 1)." if rekomendasi['RSI 5m'] < 50 else "RSI masih cukup tinggi, pantau terus dan tunggu koreksi intraday yang lebih dalam sebelum HAKA."
-
-        st.markdown(f"""
-        **💡 Alasan Pemilihan {rekomendasi['Ticker']}:**
-        * Saham ini mengalami koreksi sehat dengan tingkat diskon **{rekomendasi['Diskon (%)']}%** dari harga tertingginya dalam 5 hari terakhir.
-        * {alasan_vwap}
-        * {alasan_rsi}
+    # 1. Daftar Saham yang Akan Dipantau Sesuai Request User
+    target_saham = [
+        "MPMX", "ASGR", "LPPF", "ROTI", "CNMA", "RALS", "TAPG", "UNIC", 
+        "KKGI", "CITA", "PTBA", "UNVR", "SPTO", "FWCT", "LPIN", "TLDN", 
+        "BSSR", "ADRO", "MARK", "TPMA", "SGRO", "TOTL", "ARNA", "POWR", 
+        "HRXA", "NRCA", "MSTI", "EAST", "ACES", "TOTO", "SIDO", "AUTO", "TLKM"
+    ]
+    
+    st.write(f"Memantau **{len(target_saham)}** emiten pilihan berdasarkan kriteria Value Investing:")
+    
+    with st.expander("ℹ️ Parameter Kriteria yang Digunakan", expanded=False):
+        st.markdown("""
+        1. **Valuasi (Harga Diskon):** PBV < 1, PER < 15
+        2. **Profitabilitas (Mesin Uang):** ROE > 10%, Laba Bersih/EPS Positif
+        3. **Kesehatan Keuangan (Keamanan):** DER < 1 (Utang kecil), Current Ratio > 1 (Aman jangka pendek)
+        4. **Bonus Menunggu:** Dividend Yield menarik (> 4%)
         """)
+
+    with st.spinner("⏳ Menarik laporan keuangan terbaru dari server... (Membutuhkan waktu 10-20 detik)"):
+        df_hasil = get_fundamental_data(target_saham)
         
-        st.markdown("---")
+    if df_hasil.empty:
+        st.error("❌ Gagal menarik data fundamental. Periksa koneksi internet Anda.")
+        return
         
-        # --- UI LAYOUT TOP 10 TABLE ---
-        st.markdown("### 📋 Top 10 Saham Diskon Tertinggi")
+    # Urutkan dari Skor Tertinggi (Paling Sempurna), lalu PBV terendah
+    df_hasil = df_hasil.sort_values(by=['Skor Validasi', 'PBV (x)'], ascending=[False, True]).reset_index(drop=True)
+    
+    # --- 2. REKOMENDASI PEMANTAUAN PALING BAGUS ---
+    top_saham = df_hasil.iloc[0]
+    st.success(f"### 🏆 Top Rekomendasi: **{top_saham['Ticker']}** (Skor Lulus: {top_saham['Skor Validasi']}/7 Kriteria)")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Valuasi Diskon", f"PBV {top_saham['PBV (x)']}x", f"PER {top_saham['PER (x)']}x", delta_color="inverse")
+    col2.metric("Profitabilitas", f"ROE {top_saham['ROE (%)']}%", f"EPS Rp {top_saham['EPS']:,.0f}")
+    col3.metric("Kesehatan", f"DER {top_saham['DER (x)']}x", f"CR {top_saham['Current Ratio (x)']}x", delta_color="inverse")
+    col4.metric("Kompensasi", f"Yield {top_saham['Div Yield (%)']}%")
+
+    st.markdown("---")
+    st.markdown("### 📋 Papan Peringkat Screening (Diurutkan dari Terbaik)")
+    
+    # Fungsi styling warna untuk sel di dalam tabel
+    def highlight_kriteria(row):
+        styles = [''] * len(row)
         
-        # Merapikan format kolom untuk ditampilkan di tabel
-        df_tabel = df_top_10[['Ticker', 'Harga', 'Diskon (%)', 'Status VWAP', 'RSI 5m']].copy()
-        df_tabel['Harga'] = df_tabel['Harga'].apply(lambda x: f"Rp {x:,.0f}")
-        df_tabel['Diskon (%)'] = df_tabel['Diskon (%)'].apply(lambda x: f"{x}%")
+        # Temukan index dari setiap kolom
+        idx_pbv = row.index.get_loc('PBV (x)')
+        idx_per = row.index.get_loc('PER (x)')
+        idx_roe = row.index.get_loc('ROE (%)')
+        idx_der = row.index.get_loc('DER (x)')
+        idx_cr = row.index.get_loc('Current Ratio (x)')
+        idx_div = row.index.get_loc('Div Yield (%)')
+        idx_eps = row.index.get_loc('EPS')
         
-        st.dataframe(
-            df_tabel,
-            use_container_width=True,
-            hide_index=True
-        )
+        # Hijau jika lulus kriteria
+        if 0 < row['PBV (x)'] <= 1.0: styles[idx_pbv] = 'background-color: rgba(30, 70, 32, 0.5)'
+        if 0 < row['PER (x)'] <= 15: styles[idx_per] = 'background-color: rgba(30, 70, 32, 0.5)'
+        if row['ROE (%)'] >= 10: styles[idx_roe] = 'background-color: rgba(30, 70, 32, 0.5)'
+        if 0 <= row['DER (x)'] < 1: styles[idx_der] = 'background-color: rgba(30, 70, 32, 0.5)'
+        if row['Current Ratio (x)'] >= 1: styles[idx_cr] = 'background-color: rgba(30, 70, 32, 0.5)'
+        if row['Div Yield (%)'] >= 4: styles[idx_div] = 'background-color: rgba(30, 70, 32, 0.5)'
+        if row['EPS'] > 0: styles[idx_eps] = 'background-color: rgba(30, 70, 32, 0.5)'
+        
+        return styles
+        
+    # Tampilkan DataFrame dengan formatting
+    st.dataframe(
+        df_hasil.style.apply(highlight_kriteria, axis=1).format({
+            'Harga': "Rp {:,.0f}",
+            'PBV (x)': "{:.2f}",
+            'PER (x)': "{:.2f}",
+            'ROE (%)': "{:.2f}%",
+            'DER (x)': "{:.2f}",
+            'Current Ratio (x)': "{:.2f}",
+            'Div Yield (%)': "{:.2f}%",
+            'EPS': "Rp {:,.0f}"
+        }),
+        use_container_width=True,
+        hide_index=True,
+        height=600 # Memberikan ruang scroll untuk 33 saham
+    )
+    
+    st.caption("💡 **Tips Membaca:** Angka dengan latar belakang **Hijau** berarti saham tersebut LULUS pada kriteria yang Anda tentukan.")
