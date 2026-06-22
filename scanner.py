@@ -8,9 +8,9 @@ from data_fetcher import clean_yfinance_columns
 from indicators import calculate_indicators
 
 def proses_satu_saham(ticker):
-    # PERBAIKAN: Menambahkan jeda acak 0.5 - 1.5 detik sebagai penahan (rate-limiter)
-    # Ini mencegah IP terkena blokir otomatis (HTTP 429) akibat hit paralel yang terlalu masif ke server yfinance
-    time.sleep(random.uniform(0.5, 1.5))
+    # PERBAIKAN FINAL: Melebarkan rentang jeda (Jitter) menjadi 0.1 - 2.5 detik
+    # Mencegah "Concurrency Burst" di mana 5 workers memukul server di detik yang sama
+    time.sleep(random.uniform(0.1, 2.5))
     
     try:
         df = yf.download(f"{ticker}.JK", period="5d", interval="5m", progress=False)
@@ -22,6 +22,8 @@ def proses_satu_saham(ticker):
         if df_clean.empty: return None
         
         curr = df_clean.iloc[-1]
+        
+        # Filter Junk / Gocap
         if curr['Close'] <= 50 or curr['Turnover_MA20'] < 100000000:
             return None
             
@@ -55,6 +57,7 @@ def proses_satu_saham(ticker):
 @st.cache_data(ttl=60) 
 def scan_top_saham(watchlist):
     hasil_scan = []
+    # Eksekusi paralel 5 workers dengan sebaran waktu request yang lebih aman
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(proses_satu_saham, ticker): ticker for ticker in watchlist}
         for future in concurrent.futures.as_completed(futures):
