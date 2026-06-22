@@ -1,4 +1,3 @@
-# saham_diskon.py
 import streamlit as st
 import pandas as pd
 from data_fetcher import get_market_data, ambil_harga_realtime # Pastikan modul ini diimpor
@@ -16,37 +15,56 @@ def render_saham_diskon_tab(daftar_pantauan):
         
         # 1. Pemantauan pada daftar pantauan
         for ticker in daftar_pantauan:
-            df_5m, df_1d = get_market_data(ticker)
-            
-            if df_1d.empty or df_5m.empty:
+            try:
+                df_5m, df_1d = get_market_data(ticker)
+                
+                # Cek apakah kembalian API None atau DataFrame kosong
+                if df_1d is None or df_5m is None or df_1d.empty or df_5m.empty:
+                    continue
+                
+                # KOREKSI 1: Proteksi KeyError. Pastikan indikator sukses dihitung oleh modul lain
+                if 'VWAP' not in df_5m.columns or 'RSI' not in df_5m.columns:
+                    continue
+                    
+                # KOREKSI 2: Ambil harga real-time dengan proteksi tipe data (float)
+                try:
+                    harga_sekarang = ambil_harga_realtime(ticker)
+                    if not harga_sekarang or pd.isna(harga_sekarang) or float(harga_sekarang) <= 0:
+                        harga_sekarang = float(df_5m['Close'].iloc[-1])
+                    else:
+                        harga_sekarang = float(harga_sekarang)
+                except Exception:
+                    harga_sekarang = float(df_5m['Close'].iloc[-1])
+                    
+                # Kalkulasi Pucuk 5 Hari Terakhir (Daily)
+                high_5d = float(df_1d['High'].tail(5).max())
+                diskon_pucuk = ((high_5d - harga_sekarang) / high_5d) * 100 if high_5d > 0 else 0
+                
+                # Hanya proses saham yang sedang turun/diskon (> 0%)
+                if diskon_pucuk > 0:
+                    # Amankan dari IndexError jika semua baris dropna terhapus
+                    df_5m_clean = df_5m.dropna(subset=['VWAP', 'RSI'])
+                    if df_5m_clean.empty:
+                        continue
+                        
+                    curr_5m = df_5m_clean.iloc[-1]
+                    vwap_val = float(curr_5m['VWAP'])
+                    rsi_val = float(curr_5m['RSI'])
+                    
+                    status_vwap = "Under VWAP 🔥" if harga_sekarang < vwap_val else "Above VWAP ⚠️"
+                    
+                    hasil_scan.append({
+                        'Ticker': ticker,
+                        'Harga': harga_sekarang,
+                        'High_5D': high_5d,
+                        'Diskon (%)': round(diskon_pucuk, 2),
+                        'VWAP': vwap_val,
+                        'Status VWAP': status_vwap,
+                        'RSI 5m': round(rsi_val, 2)
+                    })
+            except Exception as e:
+                # Mengabaikan saham yang memicu error agar scanning saham lain tetap berjalan
                 continue
-                
-            # Ambil harga real-time atau gunakan close terakhir jika API gagal
-            harga_sekarang = ambil_harga_realtime(ticker)
-            if not harga_sekarang or harga_sekarang == 0:
-                harga_sekarang = float(df_5m['Close'].iloc[-1])
-                
-            # Kalkulasi Pucuk 5 Hari Terakhir (Daily)
-            high_5d = float(df_1d['High'].tail(5).max())
-            diskon_pucuk = ((high_5d - harga_sekarang) / high_5d) * 100 if high_5d > 0 else 0
-            
-            # Hanya proses saham yang sedang turun/diskon (> 0%)
-            if diskon_pucuk > 0:
-                curr_5m = df_5m.dropna(subset=['VWAP', 'EMA20']).iloc[-1]
-                vwap_val = float(curr_5m['VWAP'])
-                rsi_val = float(curr_5m['RSI'])
-                
-                status_vwap = "Under VWAP 🔥" if harga_sekarang < vwap_val else "Above VWAP ⚠️"
-                
-                hasil_scan.append({
-                    'Ticker': ticker,
-                    'Harga': harga_sekarang,
-                    'High_5D': high_5d,
-                    'Diskon (%)': round(diskon_pucuk, 2),
-                    'VWAP': vwap_val,
-                    'Status VWAP': status_vwap,
-                    'RSI 5m': round(rsi_val, 2)
-                })
         
         if not hasil_scan:
             st.info("Belum ada saham dari daftar pantauan yang masuk area diskon saat ini.")
@@ -87,15 +105,21 @@ def render_saham_diskon_tab(daftar_pantauan):
             else:
                 st.write("⚖️ **Status:** Netral")
         with col3:
-            jarak_vwap = (abs(rekomendasi['VWAP'] - rekomendasi['Harga']) / rekomendasi['VWAP']) * 100
-            st.metric("VWAP Harian", f"Rp {rekomendasi['VWAP']:,.0f}")
-            if rekomendasi['Harga'] < rekomendasi['VWAP']:
+            # Mencegah ZeroDivisionError jika API mengembalikan VWAP bernilai 0
+            vwap_rek = rekomendasi['VWAP']
+            if vwap_rek > 0:
+                jarak_vwap = (abs(vwap_rek - rekomendasi['Harga']) / vwap_rek) * 100
+            else:
+                jarak_vwap = 0
+                
+            st.metric("VWAP Harian", f"Rp {vwap_rek:,.0f}")
+            if rekomendasi['Harga'] < vwap_rek:
                 st.write(f"🔥 **Under VWAP:** Murah -{jarak_vwap:.1f}%")
             else:
                 st.write(f"⚠️ **Above VWAP:** Premium +{jarak_vwap:.1f}%")
 
         # Alasan Dinamis berdasarkan metrik
-        alasan_vwap = "Harganya saat ini berada di bawah rata-rata modal bandar intraday (Under VWAP), memberikan *margin of safety* yang aman dari risiko guyuran." if rekomendasi['Harga'] < rekomendasi['VWAP'] else "Meskipun terdiskon dari area pucuk harian, harganya masih di atas rata-rata VWAP, disarankan untuk mengantre di area VWAP agar lebih aman."
+        alasan_vwap = "Harganya saat ini berada di bawah rata-rata modal bandar intraday (Under VWAP), memberikan *margin of safety* yang aman dari risiko guyuran." if rekomendasi['Harga'] < vwap_rek else "Meskipun terdiskon dari area pucuk harian, harganya masih di atas rata-rata VWAP, disarankan untuk mengantre di area VWAP agar lebih aman."
         alasan_rsi = "Tekanan jual sudah mereda ditandai dengan RSI yang masuk fase Oversold/Netral, sangat ideal untuk mulai *cicil buy* (Tranche 1)." if rekomendasi['RSI 5m'] < 50 else "RSI masih cukup tinggi, pantau terus dan tunggu koreksi intraday yang lebih dalam sebelum HAKA."
 
         st.markdown(f"""
